@@ -42,7 +42,7 @@ app.config['MAIL_PASSWORD']       = os.getenv('MAIL_PASSWORD')
 app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_USERNAME')
 
 mail = Mail(app)
-APP_BASE_URL = os.getenv("APP_BASE_URL", "http://127.0.0.1:5000")
+APP_BASE_URL = os.getenv("APP_BASE_URL", "http://127.0.0.1:5000").rstrip("/")
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 ALLOWED_EXTENSIONS = { 'png', 'jpg', 'jpeg'}
 
@@ -2844,7 +2844,7 @@ def upload_document():
 
 
         url = f"{APP_BASE_URL}/uploads/documents/{filename}"
-        
+
         return jsonify({'message': 'Document uploadé avec succès', 'url': url})
 
     except RequestEntityTooLarge:
