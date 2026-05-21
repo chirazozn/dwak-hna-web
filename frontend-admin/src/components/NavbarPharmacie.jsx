@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
-const API      = 'http://127.0.0.1:5000/api/pharmacie';
+const API      = 'https://dwak-hna-web.onrender.com/api/pharmacie';
 const getToken = () => localStorage.getItem('token');
 const headers  = () => ({ Authorization: `Bearer ${getToken()}` });
 

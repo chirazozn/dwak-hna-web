@@ -4,7 +4,7 @@ import SidebarPharmacie from '../../components/SidebarPharmacie';
 import NavbarPharmacie  from '../../components/NavbarPharmacie';
 import Toast from '../../components/Toast';
 
-const API      = 'http://127.0.0.1:5000/api/pharmacie';
+const API      = 'https://dwak-hna-web.onrender.com/api/pharmacie';
 const getToken = () => localStorage.getItem('token');
 const headers  = () => ({ Authorization: `Bearer ${getToken()}` });
 
@@ -100,7 +100,7 @@ export default function PharmacieProfil() {
     try {
       const [profilRes, wilayasRes] = await Promise.all([
         axios.get(`${API}/profil`, { headers: headers() }),
-        axios.get('http://127.0.0.1:5000/api/wilayas'),
+        axios.get('https://dwak-hna-web.onrender.com/api/wilayas'),
       ]);
       const p = profilRes.data.pharmacie;
       setPharmacie(p);
@@ -126,7 +126,7 @@ export default function PharmacieProfil() {
 
   const fetchCommunes = async (wilaya_id) => {
     try {
-      const res = await axios.get(`http://127.0.0.1:5000/api/communes/${wilaya_id}`);
+      const res = await axios.get(`https://dwak-hna-web.onrender.com/api/communes/${wilaya_id}`);
       setCommunes(res.data.communes || []);
     } catch (e) { console.error(e); }
   };
@@ -173,7 +173,7 @@ export default function PharmacieProfil() {
       formData.append('email', pharmacie?.email || 'logo');
 
       const uploadRes = await axios.post(
-        'http://127.0.0.1:5000/api/pharmacie/upload-document',
+        'https://dwak-hna-web.onrender.com/api/pharmacie/upload-document',
         formData,
         { headers: { ...headers(), 'Content-Type': 'multipart/form-data' } }
       );

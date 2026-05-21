@@ -32,7 +32,7 @@ export default function Login() {
     setLoading(true);
     setError('');
     try {
-      const res = await axios.post('http://127.0.0.1:5000/api/login', {
+      const res = await axios.post('https://dwak-hna-web.onrender.com/api/login', {
         email, mot_de_passe: password
       });
       localStorage.setItem('token', res.data.token);
@@ -62,7 +62,7 @@ export default function Login() {
     if (!forgotEmail) { showForgotMsg('Email obligatoire', 'error'); return; }
     setForgotLoading(true);
     try {
-      const res = await axios.post('http://127.0.0.1:5000/api/forgot-password', { email: forgotEmail });
+      const res = await axios.post('https://dwak-hna-web.onrender.com/api/forgot-password', { email: forgotEmail });
       showForgotMsg(res.data.message, 'success');
       setForgotStep(2);
     } catch (err) {
@@ -78,7 +78,7 @@ export default function Login() {
     if (newPass !== confirmPass)  { showForgotMsg('Les mots de passe ne correspondent pas', 'error'); return; }
     setForgotLoading(true);
     try {
-      await axios.post('http://127.0.0.1:5000/api/reset-password', {
+      await axios.post('https://dwak-hna-web.onrender.com/api/reset-password', {
         email: forgotEmail, code: forgotCode, new_password: newPass,
       });
       showForgotMsg('Mot de passe réinitialisé ! Connectez-vous.', 'success');

@@ -3,7 +3,7 @@ import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
 import logo from '../../assets/dwakhnalogo.png';
 
-const API = 'http://127.0.0.1:5000/api';
+const API = 'https://dwak-hna-web.onrender.com/api';
 
 const playSound = () => {
   try {

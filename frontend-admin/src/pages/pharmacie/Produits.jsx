@@ -4,7 +4,7 @@ import SidebarPharmacie from '../../components/SidebarPharmacie';
 import NavbarPharmacie  from '../../components/NavbarPharmacie';
 import Toast from '../../components/Toast';
 
-const API      = 'http://127.0.0.1:5000/api/pharmacie';
+const API      = 'https://dwak-hna-web.onrender.com/api/pharmacie';
 const getToken = () => localStorage.getItem('token');
 const headers  = () => ({ Authorization: `Bearer ${getToken()}` });
 

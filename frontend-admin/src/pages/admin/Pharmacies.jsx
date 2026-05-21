@@ -5,7 +5,7 @@ import Navbar from '../../components/Navbar';
 import StatCard from '../../components/StatCard';
 import Toast from '../../components/Toast';
 
-const API      = 'http://127.0.0.1:5000/api/admin';
+const API      = 'https://dwak-hna-web.onrender.com/api/admin';
 const getToken = () => localStorage.getItem('token');
 const headers  = () => ({ Authorization: `Bearer ${getToken()}` });
 

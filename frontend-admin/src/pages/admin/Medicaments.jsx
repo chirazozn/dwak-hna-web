@@ -29,7 +29,7 @@ export default function AdminMedicaments() {
   const fetchMedicaments = async () => {
     setLoading(true);
     try {
-      const res = await axios.get('http://127.0.0.1:5000/api/admin/medicaments', {
+      const res = await axios.get('https://dwak-hna-web.onrender.com/api/admin/medicaments', {
         params: { page, search, filtre },
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -68,13 +68,13 @@ export default function AdminMedicaments() {
     try {
       if (modal.medicament) {
         await axios.put(
-          `http://127.0.0.1:5000/api/admin/medicaments/${modal.medicament.medicament_id}`,
+          `https://dwak-hna-web.onrender.com/api/admin/medicaments/${modal.medicament.medicament_id}`,
           form,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         showMessage('Médicament modifié avec succès', 'success');
       } else {
-        await axios.post('http://127.0.0.1:5000/api/admin/medicaments', form, {
+        await axios.post('https://dwak-hna-web.onrender.com/api/admin/medicaments', form, {
           headers: { Authorization: `Bearer ${token}` }
         });
         showMessage('Médicament ajouté avec succès', 'success');
@@ -89,7 +89,7 @@ export default function AdminMedicaments() {
   const handleToggle = async (m) => {
     try {
       await axios.put(
-        `http://127.0.0.1:5000/api/admin/medicaments/${m.medicament_id}/toggle`,
+        `https://dwak-hna-web.onrender.com/api/admin/medicaments/${m.medicament_id}/toggle`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -103,7 +103,7 @@ export default function AdminMedicaments() {
   const handleDelete = async () => {
     try {
       await axios.delete(
-        `http://127.0.0.1:5000/api/admin/medicaments/${modal.medicament.medicament_id}`,
+        `https://dwak-hna-web.onrender.com/api/admin/medicaments/${modal.medicament.medicament_id}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       showMessage('Médicament supprimé avec succès', 'success');
