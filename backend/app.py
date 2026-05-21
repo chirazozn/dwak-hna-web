@@ -10,19 +10,20 @@ import random
 import string
 import os
 from werkzeug.utils import secure_filename
-
+from werkzeug.exceptions import RequestEntityTooLarge
 
 load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
-# Configuration MySQL
-app.config['MYSQL_HOST']     = os.getenv('MYSQL_HOST')
-app.config['MYSQL_USER']     = os.getenv('MYSQL_USER')
-app.config['MYSQL_PASSWORD'] = os.getenv('MYSQL_PASSWORD')
-app.config['MYSQL_DB']       = os.getenv('MYSQL_DB')
-app.config['SECRET_KEY']     = os.getenv('SECRET_KEY')
+# Configuration MySQL / TiDB
+app.config['MYSQL_HOST'] = os.getenv('DB_HOST') or os.getenv('MYSQL_HOST')
+app.config['MYSQL_USER'] = os.getenv('DB_USER') or os.getenv('MYSQL_USER')
+app.config['MYSQL_PASSWORD'] = os.getenv('DB_PASSWORD') or os.getenv('MYSQL_PASSWORD')
+app.config['MYSQL_DB'] = os.getenv('MYSQL_DB') or os.getenv('DB_NAME')
+app.config['MYSQL_PORT'] = int(os.getenv('DB_PORT') or os.getenv('MYSQL_PORT') or 3306)
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 
 mysql = MySQL(app)
 # Config mail
@@ -34,7 +35,7 @@ app.config['MAIL_PASSWORD']       = os.getenv('MAIL_PASSWORD')
 app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_USERNAME')
 
 mail = Mail(app)
-
+APP_BASE_URL = os.getenv("APP_BASE_URL", "http://127.0.0.1:5000")
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 ALLOWED_EXTENSIONS = { 'png', 'jpg', 'jpeg'}
 
@@ -63,6 +64,20 @@ def test():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)})
 
+
+@app.route("/")
+def index():
+    return jsonify({
+        "success": True,
+        "message": "Dwak Hna Web API is running"
+    })
+
+@app.route("/api/health")
+def health():
+    return jsonify({
+        "success": True,
+        "message": "Backend web OK"
+    })
 # ============================================================
 # LOGIN UNIFIE (Admin + Pharmacie)
 # ============================================================
@@ -2820,7 +2835,8 @@ def upload_document():
         filepath = os.path.join(UPLOAD_FOLDER, 'documents', filename)
         file.save(filepath)
 
-        url = f"http://127.0.0.1:5000/uploads/documents/{filename}"
+
+        url = f"{APP_BASE_URL}/uploads/documents/{filename}"
         return jsonify({'message': 'Document uploadé avec succès', 'url': url})
 
     except RequestEntityTooLarge:
