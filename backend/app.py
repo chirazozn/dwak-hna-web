@@ -2844,6 +2844,7 @@ def upload_document():
 
 
         url = f"{APP_BASE_URL}/uploads/documents/{filename}"
+        
         return jsonify({'message': 'Document uploadé avec succès', 'url': url})
 
     except RequestEntityTooLarge:
