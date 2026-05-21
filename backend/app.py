@@ -22,8 +22,15 @@ app.config['MYSQL_HOST'] = os.getenv('DB_HOST') or os.getenv('MYSQL_HOST')
 app.config['MYSQL_USER'] = os.getenv('DB_USER') or os.getenv('MYSQL_USER')
 app.config['MYSQL_PASSWORD'] = os.getenv('DB_PASSWORD') or os.getenv('MYSQL_PASSWORD')
 app.config['MYSQL_DB'] = os.getenv('MYSQL_DB') or os.getenv('DB_NAME')
-app.config['MYSQL_PORT'] = int(os.getenv('DB_PORT') or os.getenv('MYSQL_PORT') or 3306)
+app.config['MYSQL_PORT'] = int(os.getenv('DB_PORT') or os.getenv('MYSQL_PORT') or 4000)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
+
+# Required by TiDB Cloud: secure TLS connection
+app.config['MYSQL_CUSTOM_OPTIONS'] = {
+    'ssl': {
+        'ca': '/etc/ssl/certs/ca-certificates.crt'
+    }
+}
 
 mysql = MySQL(app)
 # Config mail
