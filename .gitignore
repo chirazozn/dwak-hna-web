@@ -1,0 +1,14 @@
+backend/venv/
+backend/.env
+backend/uploads/
+backend/__pycache__/
+backend/**/*.pyc
+
+frontend-admin/node_modules/
+frontend-admin/build/
+frontend-admin/.env
+frontend-admin/.env.local
+
+*.log
+.DS_Store
+Thumbs.db
