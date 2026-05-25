@@ -2302,30 +2302,83 @@ def repondre_demande(demande_id):
         data  = jwt.decode(token, os.getenv('SECRET_KEY'), algorithms=['HS256'])
         pharmacie_id = data['id']
 
-        body    = request.get_json()
-        statut  = body.get('statut')   # 'acceptee' ou 'refusee'
+        body = request.get_json() or {}
+        statut = body.get('statut')   # 'acceptee' ou 'refusee'
         message = body.get('message', '')
 
         if statut not in ['acceptee', 'refusee']:
             return jsonify({'message': 'Statut invalide'}), 400
 
         cur = mysql.connection.cursor()
+
+        # Vérifier que cette demande est bien liée à cette pharmacie
+        cur.execute("""
+            SELECT d.patient_id, ph.nom, dp.statut
+            FROM demande_pharmacies dp
+            JOIN demandes d ON d.demande_id = dp.demande_id
+            JOIN pharmacies ph ON ph.pharmacie_id = dp.pharmacie_id
+            WHERE dp.demande_id = %s
+            AND dp.pharmacie_id = %s
+        """, (demande_id, pharmacie_id))
+
+        info = cur.fetchone()
+
+        if not info:
+            return jsonify({'message': 'Demande introuvable pour cette pharmacie'}), 404
+
+        patient_id = info[0]
+        pharmacie_nom = info[1] or 'Une pharmacie'
+
+        # Mettre à jour la réponse pharmacie
         cur.execute("""
             UPDATE demande_pharmacies
             SET statut = %s, message = %s, repondu_le = NOW()
             WHERE demande_id = %s AND pharmacie_id = %s
         """, (statut, message, demande_id, pharmacie_id))
 
-        # Mettre à jour etat de la demande
+        # Mettre à jour état de la demande
         cur.execute("""
-            UPDATE demandes SET etat = 'reponse_recue'
-            WHERE demande_id = %s AND etat = 'en_attente'
+            UPDATE demandes
+            SET etat = 'reponse_recue'
+            WHERE demande_id = %s
+            AND etat = 'en_attente'
         """, (demande_id,))
 
+        # Créer notification système pour le patient
+        if statut == 'acceptee':
+            type_notif = 'demande_acceptee'
+            titre_notif = 'Demande acceptée'
+            corps_notif = f'{pharmacie_nom} a accepté votre demande.'
+        else:
+            type_notif = 'demande_refusee'
+            titre_notif = 'Demande refusée'
+            corps_notif = f'{pharmacie_nom} a refusé votre demande.'
+
+        if message:
+            corps_notif = f'{corps_notif} Message: {message}'
+
+        cur.execute("""
+            INSERT INTO notifications_systeme
+            (type_notif, titre, corps, patient_id, pharmacie_id, demande_id, est_lue)
+            VALUES (%s, %s, %s, %s, %s, %s, 0)
+        """, (
+            type_notif,
+            titre_notif,
+            corps_notif,
+            patient_id,
+            pharmacie_id,
+            demande_id,
+        ))
+
         mysql.connection.commit()
-        return jsonify({'message': f'Réponse envoyée avec succès'})
+
+        return jsonify({
+            'message': 'Réponse envoyée avec succès',
+            'notification_created': True
+        })
 
     except Exception as e:
+        mysql.connection.rollback()
         return jsonify({'message': str(e)}), 500
 
 
