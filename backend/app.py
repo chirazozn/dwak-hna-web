@@ -1721,8 +1721,6 @@ def get_notifications():
     except Exception as e:
         return jsonify({'message': str(e)}), 500
 
-
-@app.route('/api/admin/notifications', methods=['POST'])
 def send_admin_push_to_patients(cur, notif_type, patient_id, titre, corps):
     tokens = []
 
@@ -1770,6 +1768,8 @@ def send_admin_push_to_patients(cur, notif_type, patient_id, titre, corps):
     print("FCM ADMIN SENT COUNT:", sent_count)
 
     return sent_count
+
+
 @app.route('/api/admin/notifications', methods=['POST'])
 def send_notification():
     try:
@@ -1802,7 +1802,6 @@ def send_notification():
 
         push_sent_count = 0
 
-        # Push mobile seulement pour patients / tous
         if notif_type in ['patient', 'tous']:
             push_sent_count = send_admin_push_to_patients(
                 cur=cur,
