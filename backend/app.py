@@ -11,7 +11,7 @@ import string
 import os
 from werkzeug.utils import secure_filename
 from werkzeug.exceptions import RequestEntityTooLarge
-
+from firebase_push import send_push_to_token
 load_dotenv()
 
 app = Flask(__name__)
@@ -2294,12 +2294,11 @@ def get_pharmacie_demandes():
     except Exception as e:
         return jsonify({'message': str(e)}), 500
 
-
 @app.route('/api/pharmacie/demandes/<int:demande_id>/repondre', methods=['PUT'])
 def repondre_demande(demande_id):
     try:
         token = request.headers.get('Authorization', '').replace('Bearer ', '')
-        data  = jwt.decode(token, os.getenv('SECRET_KEY'), algorithms=['HS256'])
+        data = jwt.decode(token, os.getenv('SECRET_KEY'), algorithms=['HS256'])
         pharmacie_id = data['id']
 
         body = request.get_json() or {}
@@ -2312,11 +2311,13 @@ def repondre_demande(demande_id):
         cur = mysql.connection.cursor()
 
         # Vérifier que cette demande est bien liée à cette pharmacie
+        # + récupérer le firebase_token du patient
         cur.execute("""
-            SELECT d.patient_id, ph.nom, dp.statut
+            SELECT d.patient_id, ph.nom, pa.firebase_token
             FROM demande_pharmacies dp
             JOIN demandes d ON d.demande_id = dp.demande_id
             JOIN pharmacies ph ON ph.pharmacie_id = dp.pharmacie_id
+            JOIN patients pa ON pa.patient_id = d.patient_id
             WHERE dp.demande_id = %s
             AND dp.pharmacie_id = %s
         """, (demande_id, pharmacie_id))
@@ -2328,6 +2329,7 @@ def repondre_demande(demande_id):
 
         patient_id = info[0]
         pharmacie_nom = info[1] or 'Une pharmacie'
+        firebase_token = info[2]
 
         # Mettre à jour la réponse pharmacie
         cur.execute("""
@@ -2370,17 +2372,35 @@ def repondre_demande(demande_id):
             demande_id,
         ))
 
+        # Envoyer notification Firebase hors app
+        push_sent = False
+
+        if firebase_token:
+            push_sent = send_push_to_token(
+                token=firebase_token,
+                title=titre_notif,
+                body=corps_notif,
+                data={
+                    "source": "systeme",
+                    "type_notif": type_notif,
+                    "demande_id": str(demande_id),
+                }
+            )
+        else:
+            print("FCM WEB: patient sans firebase_token", patient_id)
+
         mysql.connection.commit()
 
         return jsonify({
             'message': 'Réponse envoyée avec succès',
-            'notification_created': True
+            'notification_created': True,
+            'push_sent': push_sent
         })
 
     except Exception as e:
         mysql.connection.rollback()
+        print("REPONDRE DEMANDE ERROR:", e)
         return jsonify({'message': str(e)}), 500
-
 
 # ============================================================
 # NOTIFICATIONS PHARMACIE (polling)
