@@ -1723,24 +1723,103 @@ def get_notifications():
 
 
 @app.route('/api/admin/notifications', methods=['POST'])
+def send_admin_push_to_patients(cur, notif_type, patient_id, titre, corps):
+    tokens = []
+
+    # Notification vers un seul patient
+    if notif_type == 'patient' and patient_id:
+        cur.execute("""
+            SELECT firebase_token
+            FROM patients
+            WHERE patient_id = %s
+            AND firebase_token IS NOT NULL
+            AND firebase_token <> ''
+        """, (patient_id,))
+
+        rows = cur.fetchall()
+        tokens = [r[0] for r in rows if r[0]]
+
+    # Notification vers tous les patients
+    elif notif_type in ['tous', 'patient']:
+        cur.execute("""
+            SELECT firebase_token
+            FROM patients
+            WHERE firebase_token IS NOT NULL
+            AND firebase_token <> ''
+        """)
+
+        rows = cur.fetchall()
+        tokens = [r[0] for r in rows if r[0]]
+
+    sent_count = 0
+
+    for firebase_token in set(tokens):
+        ok = send_push_to_token(
+            token=firebase_token,
+            title=titre,
+            body=corps,
+            data={
+                "source": "admin",
+                "type_notif": notif_type,
+            }
+        )
+
+        if ok:
+            sent_count += 1
+
+    print("FCM ADMIN SENT COUNT:", sent_count)
+
+    return sent_count
+@app.route('/api/admin/notifications', methods=['POST'])
 def send_notification():
     try:
-        data = request.get_json()
-        cur  = mysql.connection.cursor()
+        data = request.get_json() or {}
+
+        titre = data.get('titre')
+        corps = data.get('corps')
+        notif_type = data.get('type')
+        patient_id = data.get('patient_id') or None
+        pharmacie_id = data.get('pharmacie_id') or None
+
+        if not titre or not corps or notif_type not in ['patient', 'pharmacie', 'tous']:
+            return jsonify({'message': 'Données invalides'}), 400
+
+        cur = mysql.connection.cursor()
+
         cur.execute("""
             INSERT INTO notifications_admin
             (titre, corps, type, patient_id, pharmacie_id)
             VALUES (%s, %s, %s, %s, %s)
         """, (
-            data.get('titre'),
-            data.get('corps'),
-            data.get('type'),
-            data.get('patient_id') or None,
-            data.get('pharmacie_id') or None,
+            titre,
+            corps,
+            notif_type,
+            patient_id,
+            pharmacie_id,
         ))
+
         mysql.connection.commit()
-        return jsonify({'message': 'Notification envoyée avec succès'})
+
+        push_sent_count = 0
+
+        # Push mobile seulement pour patients / tous
+        if notif_type in ['patient', 'tous']:
+            push_sent_count = send_admin_push_to_patients(
+                cur=cur,
+                notif_type=notif_type,
+                patient_id=patient_id,
+                titre=titre,
+                corps=corps,
+            )
+
+        return jsonify({
+            'message': 'Notification envoyée avec succès',
+            'push_sent_count': push_sent_count,
+        })
+
     except Exception as e:
+        mysql.connection.rollback()
+        print("ADMIN NOTIFICATION ERROR:", e)
         return jsonify({'message': str(e)}), 500
 
 
