@@ -2481,7 +2481,132 @@ def repondre_demande(demande_id):
         return jsonify({'message': str(e)}), 500
 
 # ============================================================
-# NOTIFICATIONS PHARMACIE (polling)
+# NOTIFICATIONS PHARMACIE (polling)@app.route('/api/pharmacie/demandes/<int:demande_id>/repondre', methods=['PUT'])
+def repondre_demande(demande_id):
+    try:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        data = jwt.decode(token, os.getenv('SECRET_KEY'), algorithms=['HS256'])
+        pharmacie_id = data['id']
+
+        body = request.get_json() or {}
+        statut = body.get('statut')   # 'acceptee' ou 'refusee'
+        message = body.get('message', '')
+
+        if statut not in ['acceptee', 'refusee']:
+            return jsonify({'message': 'Statut invalide'}), 400
+
+        cur = mysql.connection.cursor()
+
+        cur.execute("""
+            SELECT d.patient_id, ph.nom, pa.firebase_token
+            FROM demande_pharmacies dp
+            JOIN demandes d ON d.demande_id = dp.demande_id
+            JOIN pharmacies ph ON ph.pharmacie_id = dp.pharmacie_id
+            JOIN patients pa ON pa.patient_id = d.patient_id
+            WHERE dp.demande_id = %s
+            AND dp.pharmacie_id = %s
+        """, (demande_id, pharmacie_id))
+
+        info = cur.fetchone()
+
+        if not info:
+            return jsonify({'message': 'Demande introuvable pour cette pharmacie'}), 404
+
+        patient_id = info[0]
+        pharmacie_nom = info[1] or 'Une pharmacie'
+        firebase_token = info[2]
+
+        cur.execute("""
+            UPDATE demande_pharmacies
+            SET statut = %s, message = %s, repondu_le = NOW()
+            WHERE demande_id = %s AND pharmacie_id = %s
+        """, (statut, message, demande_id, pharmacie_id))
+
+        cur.execute("""
+            UPDATE demandes
+            SET etat = 'reponse_recue'
+            WHERE demande_id = %s
+            AND etat = 'en_attente'
+        """, (demande_id,))
+
+        if statut == 'refusee':
+            cur.execute("""
+                SELECT
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN statut = 'refusee' THEN 1 ELSE 0 END) AS refusees,
+                    SUM(CASE WHEN statut IN ('acceptee', 'choisie') THEN 1 ELSE 0 END) AS positives
+                FROM demande_pharmacies
+                WHERE demande_id = %s
+            """, (demande_id,))
+
+            stats = cur.fetchone()
+
+            total = int(stats[0] or 0)
+            refusees = int(stats[1] or 0)
+            positives = int(stats[2] or 0)
+
+            if total > 0 and refusees == total and positives == 0:
+                cur.execute("""
+                    UPDATE demandes
+                    SET etat = 'termine',
+                        modifie_le = NOW()
+                    WHERE demande_id = %s
+                    AND pharmacie_choisie_id IS NULL
+                """, (demande_id,))
+
+        if statut == 'acceptee':
+            type_notif = 'demande_acceptee'
+            titre_notif = 'Demande acceptée'
+            corps_notif = f'{pharmacie_nom} a accepté votre demande.'
+        else:
+            type_notif = 'demande_refusee'
+            titre_notif = 'Demande refusée'
+            corps_notif = f'{pharmacie_nom} a refusé votre demande.'
+
+        if message:
+            corps_notif = f'{corps_notif} Message: {message}'
+
+        cur.execute("""
+            INSERT INTO notifications_systeme
+            (type_notif, titre, corps, patient_id, pharmacie_id, demande_id, est_lue)
+            VALUES (%s, %s, %s, %s, %s, %s, 0)
+        """, (
+            type_notif,
+            titre_notif,
+            corps_notif,
+            patient_id,
+            pharmacie_id,
+            demande_id,
+        ))
+
+        push_sent = False
+
+        if firebase_token:
+            push_sent = send_push_to_token(
+                token=firebase_token,
+                title=titre_notif,
+                body=corps_notif,
+                data={
+                    "source": "systeme",
+                    "type_notif": type_notif,
+                    "demande_id": str(demande_id),
+                }
+            )
+        else:
+            print("FCM WEB: patient sans firebase_token", patient_id)
+
+        mysql.connection.commit()
+
+        return jsonify({
+            'message': 'Réponse envoyée avec succès',
+            'notification_created': True,
+            'push_sent': push_sent
+        })
+
+    except Exception as e:
+        mysql.connection.rollback()
+        print("REPONDRE DEMANDE ERROR:", e)
+        return jsonify({'message': str(e)}), 500
 # ============================================================
 
 @app.route('/api/pharmacie/notifications', methods=['GET'])
