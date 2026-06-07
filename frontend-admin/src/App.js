@@ -18,7 +18,7 @@ import PharmacieDashboard from './pages/pharmacie/Dashboard';
 import PharmacieDemandes from './pages/pharmacie/Demandes';
 import PharmacieProduits from './pages/pharmacie/Produits';
 import PharmacieProfil from './pages/pharmacie/Profil';
-
+import PharmacieCommandes from './pages/pharmacie/PharmacieCommandes';
 
 
 import './App.css';
@@ -65,7 +65,7 @@ function App() {
 <Route path="/pharmacie/demandes" element={<PharmacieDemandes />} />
 <Route path="/pharmacie/produits" element={<PharmacieProduits />} />
 <Route path="/pharmacie/profil" element={<PharmacieProfil />} />
-
+<Route path="/pharmacie/commandes" element={<PharmacieCommandes />} />
 
       </Routes>
     </Router>

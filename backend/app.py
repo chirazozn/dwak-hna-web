@@ -3066,6 +3066,189 @@ def serve_document(filename):
         filename
     )
 
+
+
+
+
+
+
+
+
+@app.route('/api/pharmacie/commandes', methods=['GET'])
+def pharmacie_commandes():
+    try:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        data = jwt.decode(token, os.getenv('SECRET_KEY'), algorithms=['HS256'])
+        pharmacie_id = data['id']
+        page = max(1, int(request.args.get('page', 1)))
+        per_page = max(1, int(request.args.get('per_page', 10)))
+        search = (request.args.get('search') or '').strip()
+        filtre = (request.args.get('filtre') or 'en_attente').strip()
+        offset = (page - 1) * per_page
+        cur = mysql.connection.cursor()
+        where = "WHERE c.pharmacie_id = %s"
+        params = [pharmacie_id]
+        if filtre == 'en_attente':
+            where += " AND c.statut = 'en_attente'"
+        elif filtre in ['acceptee', 'refusee', 'terminee', 'annulee']:
+            where += " AND c.statut = %s"
+            params.append(filtre)
+        elif filtre == 'tous':
+            where += " AND c.statut <> 'en_attente'"
+        else:
+            where += " AND c.statut = 'en_attente'"
+        if search:
+            where += """
+                AND (
+                    CONCAT(pa.nom, ' ', pa.prenom) LIKE %s
+                    OR pa.telephone LIKE %s
+                    OR EXISTS (
+                        SELECT 1 FROM commande_lignes cl_search
+                        WHERE cl_search.commande_id = c.commande_id
+                        AND cl_search.nom_produit LIKE %s
+                    )
+                )
+            """
+            like = f"%{search}%"
+            params.extend([like, like, like])
+        cur.execute(f"SELECT COUNT(*) FROM commandes c JOIN patients pa ON pa.patient_id = c.patient_id {where}", tuple(params))
+        total_rows = cur.fetchone()[0] or 0
+        total_pages = max(1, ceil(total_rows / per_page))
+        cur.execute(
+            f"""
+            SELECT c.commande_id, c.patient_id, c.pharmacie_id, c.statut, c.total,
+                   c.message_patient, c.cree_le, c.modifie_le,
+                   CONCAT(pa.nom, ' ', pa.prenom) AS patient, pa.telephone AS patient_tel
+            FROM commandes c
+            JOIN patients pa ON pa.patient_id = c.patient_id
+            {where}
+            ORDER BY c.commande_id DESC
+            LIMIT %s OFFSET %s
+            """,
+            tuple(params + [per_page, offset])
+        )
+        rows = cur.fetchall()
+        commandes = []
+        for row in rows:
+            commande = {
+                "commande_id": row[0], "patient_id": row[1], "pharmacie_id": row[2],
+                "statut": row[3], "total": float(row[4] or 0), "message_patient": row[5],
+                "cree_le": row[6].strftime("%Y-%m-%d %H:%M:%S") if row[6] else None,
+                "modifie_le": row[7].strftime("%Y-%m-%d %H:%M:%S") if row[7] else None,
+                "date": row[6].strftime("%Y-%m-%d %H:%M") if row[6] else "",
+                "patient": row[8] or "Patient", "patient_tel": row[9], "lignes": []
+            }
+            cur.execute(
+                """
+                SELECT commande_ligne_id, pharmacie_produit_id, admin_produit_id,
+                       nom_produit, prix_unitaire, quantite, sous_total
+                FROM commande_lignes
+                WHERE commande_id = %s
+                ORDER BY commande_ligne_id ASC
+                """,
+                (commande["commande_id"],)
+            )
+            lignes = cur.fetchall()
+            commande["lignes"] = [{
+                "commande_ligne_id": l[0], "pharmacie_produit_id": l[1],
+                "admin_produit_id": l[2], "nom_produit": l[3],
+                "prix_unitaire": float(l[4] or 0), "quantite": int(l[5] or 0),
+                "sous_total": float(l[6] or 0)
+            } for l in lignes]
+            commandes.append(commande)
+        cur.execute(
+            """
+            SELECT
+              SUM(CASE WHEN statut = 'en_attente' THEN 1 ELSE 0 END),
+              SUM(CASE WHEN statut = 'acceptee' THEN 1 ELSE 0 END),
+              SUM(CASE WHEN statut = 'refusee' THEN 1 ELSE 0 END),
+              SUM(CASE WHEN statut = 'terminee' THEN 1 ELSE 0 END)
+            FROM commandes WHERE pharmacie_id = %s
+            """,
+            (pharmacie_id,)
+        )
+        st = cur.fetchone() or (0, 0, 0, 0)
+        return jsonify({
+            "success": True, "commandes": commandes,
+            "stats": {"en_attente": int(st[0] or 0), "acceptees": int(st[1] or 0), "refusees": int(st[2] or 0), "terminees": int(st[3] or 0)},
+            "page": page, "pages": total_pages, "total": total_rows
+        })
+    except Exception as e:
+        print("PHARMACIE COMMANDES ERROR:", e)
+        return jsonify({"success": False, "message": "Erreur serveur"}), 500
+
+
+@app.route('/api/pharmacie/commandes/<int:commande_id>/accepter', methods=['POST'])
+def pharmacie_accepter_commande(commande_id):
+    try:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        data = jwt.decode(token, os.getenv('SECRET_KEY'), algorithms=['HS256'])
+        pharmacie_id = data['id']
+        body = request.get_json() or {}
+        message = body.get('message', '')
+        cur = mysql.connection.cursor()
+        cur.execute("SELECT commande_id, statut FROM commandes WHERE commande_id = %s AND pharmacie_id = %s LIMIT 1", (commande_id, pharmacie_id))
+        commande = cur.fetchone()
+        if not commande:
+            return jsonify({"success": False, "message": "Commande introuvable"}), 404
+        if commande[1] != 'en_attente':
+            return jsonify({"success": False, "message": "Commande déjà traitée"}), 400
+        cur.execute("UPDATE commandes SET statut = 'acceptee', message_patient = COALESCE(%s, message_patient), modifie_le = NOW() WHERE commande_id = %s AND pharmacie_id = %s", (message if message else None, commande_id, pharmacie_id))
+        mysql.connection.commit()
+        return jsonify({"success": True, "message": "Commande acceptée"})
+    except Exception as e:
+        mysql.connection.rollback()
+        print("ACCEPTER COMMANDE ERROR:", e)
+        return jsonify({"success": False, "message": "Erreur serveur"}), 500
+
+
+@app.route('/api/pharmacie/commandes/<int:commande_id>/refuser', methods=['POST'])
+def pharmacie_refuser_commande(commande_id):
+    try:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        data = jwt.decode(token, os.getenv('SECRET_KEY'), algorithms=['HS256'])
+        pharmacie_id = data['id']
+        body = request.get_json() or {}
+        message = (body.get('message') or '').strip()
+        if not message:
+            return jsonify({"success": False, "message": "Message obligatoire"}), 400
+        cur = mysql.connection.cursor()
+        cur.execute("SELECT commande_id, statut FROM commandes WHERE commande_id = %s AND pharmacie_id = %s LIMIT 1", (commande_id, pharmacie_id))
+        commande = cur.fetchone()
+        if not commande:
+            return jsonify({"success": False, "message": "Commande introuvable"}), 404
+        if commande[1] != 'en_attente':
+            return jsonify({"success": False, "message": "Commande déjà traitée"}), 400
+        cur.execute("UPDATE commandes SET statut = 'refusee', message_patient = %s, modifie_le = NOW() WHERE commande_id = %s AND pharmacie_id = %s", (message, commande_id, pharmacie_id))
+        mysql.connection.commit()
+        return jsonify({"success": True, "message": "Commande refusée"})
+    except Exception as e:
+        mysql.connection.rollback()
+        print("REFUSER COMMANDE ERROR:", e)
+        return jsonify({"success": False, "message": "Erreur serveur"}), 500
+
+
+@app.route('/api/pharmacie/commandes/<int:commande_id>/terminer', methods=['POST'])
+def pharmacie_terminer_commande(commande_id):
+    try:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        data = jwt.decode(token, os.getenv('SECRET_KEY'), algorithms=['HS256'])
+        pharmacie_id = data['id']
+        cur = mysql.connection.cursor()
+        cur.execute("SELECT commande_id, statut FROM commandes WHERE commande_id = %s AND pharmacie_id = %s LIMIT 1", (commande_id, pharmacie_id))
+        commande = cur.fetchone()
+        if not commande:
+            return jsonify({"success": False, "message": "Commande introuvable"}), 404
+        if commande[1] != 'acceptee':
+            return jsonify({"success": False, "message": "Seule une commande acceptée peut être terminée"}), 400
+        cur.execute("UPDATE commandes SET statut = 'terminee', modifie_le = NOW() WHERE commande_id = %s AND pharmacie_id = %s", (commande_id, pharmacie_id))
+        mysql.connection.commit()
+        return jsonify({"success": True, "message": "Commande terminée"})
+    except Exception as e:
+        mysql.connection.rollback()
+        print("TERMINER COMMANDE ERROR:", e)
+        return jsonify({"success": False, "message": "Erreur serveur"}), 500
+
 # ============================================================
 # RUN
 # ============================================================

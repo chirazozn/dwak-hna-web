@@ -10,6 +10,7 @@ const headers  = () => ({ Authorization: `Bearer ${getToken()}` });
 const menuItems = [
   { icon: '📊', label: 'Dashboard',  path: '/pharmacie/dashboard' },
   { icon: '📋', label: 'Demandes',   path: '/pharmacie/demandes',  badge: true },
+{ icon: '🛒', label: 'Commandes', path: '/pharmacie/commandes', badge: true },
   { icon: '📦', label: 'Produits',   path: '/pharmacie/produits'  },
   { icon: '👤', label: 'Mon Profil', path: '/pharmacie/profil'    },
 ];
