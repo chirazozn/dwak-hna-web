@@ -11,6 +11,7 @@ const menuItems = [
   { icon: '📊', label: 'Dashboard',     path: '/admin/dashboard'    },
   { icon: '👥', label: 'Patients',      path: '/admin/patients'     },
   { icon: '🏥', label: 'Pharmacies',    path: '/admin/pharmacies',  badge: 'pharmacies_en_attente' },
+  { icon: '🛒', label: 'Commandes', path: '/admin/commandes', badge: true },
   { icon: '💊', label: 'Médicaments',   path: '/admin/medicaments'  },
   { icon: '📦', label: 'Produits',      path: '/admin/produits'     },
   { icon: '🤝', label: 'Partenaires',   path: '/admin/partenaires'  },

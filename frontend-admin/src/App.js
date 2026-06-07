@@ -19,6 +19,7 @@ import PharmacieDemandes from './pages/pharmacie/Demandes';
 import PharmacieProduits from './pages/pharmacie/Produits';
 import PharmacieProfil from './pages/pharmacie/Profil';
 import PharmacieCommandes from './pages/pharmacie/PharmacieCommandes';
+import AdminCommandes from './pages/admin/AdminCommandes';
 
 
 import './App.css';
@@ -66,6 +67,8 @@ function App() {
 <Route path="/pharmacie/produits" element={<PharmacieProduits />} />
 <Route path="/pharmacie/profil" element={<PharmacieProfil />} />
 <Route path="/pharmacie/commandes" element={<PharmacieCommandes />} />
+<Route path="/admin/commandes" element={<AdminCommandes />} />
+
 
       </Routes>
     </Router>

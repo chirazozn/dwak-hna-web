@@ -3251,6 +3251,267 @@ def pharmacie_terminer_commande(commande_id):
         print("TERMINER COMMANDE ERROR:", e)
         return jsonify({"success": False, "message": "Erreur serveur"}), 500
 
+
+# =========================
+# ADMIN COMMANDES ROUTES
+# À coller dans backend/app.py ou dans ton fichier routes admin,
+# après les routes admin demandes.
+# Ces routes utilisent mysql.connection comme ta partie web.
+# =========================
+
+@app.route('/api/admin/commandes', methods=['GET'])
+def admin_get_commandes():
+    try:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        jwt.decode(token, os.getenv('SECRET_KEY'), algorithms=['HS256'])
+
+        page = int(request.args.get('page', 1))
+        search = (request.args.get('search') or '').strip()
+        filtre = (request.args.get('filtre') or 'tous').strip()
+        limit = 10
+        offset = (page - 1) * limit
+
+        cur = mysql.connection.cursor()
+
+        where = "WHERE 1=1"
+        params = []
+
+        if filtre != 'tous':
+            where += " AND c.statut = %s"
+            params.append(filtre)
+
+        if search:
+            where += """
+                AND (
+                    CAST(c.commande_id AS CHAR) LIKE %s
+                    OR CONCAT(pa.nom, ' ', pa.prenom) LIKE %s
+                    OR pa.telephone LIKE %s
+                    OR ph.nom LIKE %s
+                    OR ph.telephone LIKE %s
+                )
+            """
+            like = f"%{search}%"
+            params.extend([like, like, like, like, like])
+
+        cur.execute(f"""
+            SELECT COUNT(*)
+            FROM commandes c
+            JOIN patients pa ON pa.patient_id = c.patient_id
+            JOIN pharmacies ph ON ph.pharmacie_id = c.pharmacie_id
+            {where}
+        """, tuple(params))
+        total = cur.fetchone()[0] or 0
+        pages = max(1, math.ceil(total / limit))
+
+        cur.execute(f"""
+            SELECT
+                c.commande_id,
+                c.patient_id,
+                c.pharmacie_id,
+                c.statut,
+                c.total,
+                c.message_patient,
+                DATE_FORMAT(c.cree_le, '%%Y-%%m-%%d %%H:%%i') AS date,
+
+                CONCAT(pa.nom, ' ', pa.prenom) AS patient,
+                pa.telephone AS patient_tel,
+                pa.email AS patient_email,
+
+                ph.nom AS pharmacie_nom,
+                ph.telephone AS pharmacie_tel,
+
+                COALESCE(SUM(cl.quantite), 0) AS nb_produits
+            FROM commandes c
+            JOIN patients pa ON pa.patient_id = c.patient_id
+            JOIN pharmacies ph ON ph.pharmacie_id = c.pharmacie_id
+            LEFT JOIN commande_lignes cl ON cl.commande_id = c.commande_id
+            {where}
+            GROUP BY
+                c.commande_id,
+                c.patient_id,
+                c.pharmacie_id,
+                c.statut,
+                c.total,
+                c.message_patient,
+                c.cree_le,
+                pa.nom,
+                pa.prenom,
+                pa.telephone,
+                pa.email,
+                ph.nom,
+                ph.telephone
+            ORDER BY c.commande_id DESC
+            LIMIT %s OFFSET %s
+        """, tuple(params + [limit, offset]))
+
+        rows = cur.fetchall()
+        commandes = []
+        for r in rows:
+            commandes.append({
+                'commande_id': r[0],
+                'patient_id': r[1],
+                'pharmacie_id': r[2],
+                'statut': r[3],
+                'total': float(r[4] or 0),
+                'message_patient': r[5],
+                'date': r[6],
+                'patient': r[7],
+                'patient_tel': r[8],
+                'patient_email': r[9],
+                'pharmacie_nom': r[10],
+                'pharmacie_tel': r[11],
+                'nb_produits': int(r[12] or 0),
+            })
+
+        cur.execute("""
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN statut = 'en_attente' THEN 1 ELSE 0 END) AS en_attente,
+                SUM(CASE WHEN statut = 'acceptee' THEN 1 ELSE 0 END) AS acceptee,
+                SUM(CASE WHEN statut = 'refusee' THEN 1 ELSE 0 END) AS refusee,
+                SUM(CASE WHEN statut = 'terminee' THEN 1 ELSE 0 END) AS terminee,
+                SUM(CASE WHEN statut = 'annulee' THEN 1 ELSE 0 END) AS annulee
+            FROM commandes
+        """)
+        st = cur.fetchone()
+
+        stats = {
+            'total': int(st[0] or 0),
+            'en_attente': int(st[1] or 0),
+            'acceptee': int(st[2] or 0),
+            'refusee': int(st[3] or 0),
+            'terminee': int(st[4] or 0),
+            'annulee': int(st[5] or 0),
+        }
+
+        cur.close()
+
+        return jsonify({
+            'commandes': commandes,
+            'stats': stats,
+            'pages': pages
+        })
+
+    except Exception as e:
+        print('ADMIN GET COMMANDES ERROR:', e)
+        return jsonify({'message': str(e)}), 500
+
+
+@app.route('/api/admin/commandes/count', methods=['GET'])
+def admin_commandes_count():
+    try:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        jwt.decode(token, os.getenv('SECRET_KEY'), algorithms=['HS256'])
+
+        cur = mysql.connection.cursor()
+        cur.execute("""
+            SELECT COUNT(*)
+            FROM commandes
+            WHERE statut = 'en_attente'
+        """)
+        count = cur.fetchone()[0] or 0
+        cur.close()
+
+        return jsonify({
+            'success': True,
+            'count': int(count)
+        })
+
+    except Exception as e:
+        print('ADMIN COMMANDES COUNT ERROR:', e)
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/admin/commandes/<int:commande_id>', methods=['GET'])
+def admin_get_commande_detail(commande_id):
+    try:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        jwt.decode(token, os.getenv('SECRET_KEY'), algorithms=['HS256'])
+
+        cur = mysql.connection.cursor()
+
+        cur.execute("""
+            SELECT
+                c.commande_id,
+                c.patient_id,
+                c.pharmacie_id,
+                c.statut,
+                c.total,
+                c.message_patient,
+                DATE_FORMAT(c.cree_le, '%%Y-%%m-%%d %%H:%%i') AS date,
+
+                CONCAT(pa.nom, ' ', pa.prenom) AS patient,
+                pa.telephone AS patient_tel,
+                pa.email AS patient_email,
+
+                ph.nom AS pharmacie_nom,
+                ph.adresse AS pharmacie_adresse,
+                ph.telephone AS pharmacie_tel
+            FROM commandes c
+            JOIN patients pa ON pa.patient_id = c.patient_id
+            JOIN pharmacies ph ON ph.pharmacie_id = c.pharmacie_id
+            WHERE c.commande_id = %s
+        """, (commande_id,))
+
+        r = cur.fetchone()
+
+        if not r:
+            cur.close()
+            return jsonify({'message': 'Commande introuvable'}), 404
+
+        commande = {
+            'commande_id': r[0],
+            'patient_id': r[1],
+            'pharmacie_id': r[2],
+            'statut': r[3],
+            'total': float(r[4] or 0),
+            'message_patient': r[5],
+            'date': r[6],
+            'patient': r[7],
+            'patient_tel': r[8],
+            'patient_email': r[9],
+            'pharmacie_nom': r[10],
+            'pharmacie_adresse': r[11],
+            'pharmacie_tel': r[12],
+        }
+
+        cur.execute("""
+            SELECT
+                commande_ligne_id,
+                pharmacie_produit_id,
+                admin_produit_id,
+                nom_produit,
+                prix_unitaire,
+                quantite,
+                sous_total
+            FROM commande_lignes
+            WHERE commande_id = %s
+            ORDER BY commande_ligne_id ASC
+        """, (commande_id,))
+
+        lignes = []
+        for l in cur.fetchall():
+            lignes.append({
+                'commande_ligne_id': l[0],
+                'pharmacie_produit_id': l[1],
+                'admin_produit_id': l[2],
+                'nom_produit': l[3],
+                'prix_unitaire': float(l[4] or 0),
+                'quantite': int(l[5] or 0),
+                'sous_total': float(l[6] or 0),
+            })
+
+        cur.close()
+
+        return jsonify({
+            'commande': commande,
+            'lignes': lignes
+        })
+
+    except Exception as e:
+        print('ADMIN GET COMMANDE DETAIL ERROR:', e)
+        return jsonify({'message': str(e)}), 500
+
 # ============================================================
 # RUN
 # ============================================================
