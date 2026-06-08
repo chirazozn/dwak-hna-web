@@ -10,7 +10,7 @@ const headers  = () => ({ Authorization: `Bearer ${getToken()}` });
 const menuItems = [
   { icon: '📊', label: 'Dashboard',  path: '/pharmacie/dashboard' },
   { icon: '📋', label: 'Demandes',   path: '/pharmacie/demandes',  badge: true },
-{ icon: '🛒', label: 'Commandes', path: '/pharmacie/commandes', badge: true },
+  { icon: '🛒', label: 'Commandes',  path: '/pharmacie/commandes', badge: true },
   { icon: '📦', label: 'Produits',   path: '/pharmacie/produits'  },
   { icon: '👤', label: 'Mon Profil', path: '/pharmacie/profil'    },
 ];
@@ -35,6 +35,7 @@ export default function SidebarPharmacie({ estApprouve, pharmacie }) {
   const navigate = useNavigate();
 
   const [nbDemandes, setNbDemandes] = useState(0);
+  const [nbCommandes, setNbCommandes] = useState(0);
   const [estOuvert,  setEstOuvert]  = useState(false);
   const [estDeGarde, setEstDeGarde] = useState(false);
   const [toggling,   setToggling]   = useState(false);
@@ -42,20 +43,36 @@ export default function SidebarPharmacie({ estApprouve, pharmacie }) {
   const isFirstRef = useRef(true);
   const prevNbRef  = useRef(0);
 
- const fetchNotifs = async () => {
-  if (!estApprouve) return;
-  try {
-    const res = await axios.get(`${API}/notifications`, { headers: headers() });
-    const nb  = res.data.nb_demandes || 0;
-    if (!isFirstRef.current && nb > prevNbRef.current) {
-      playSound();
+  const fetchNotifs = async () => {
+    if (!estApprouve) return;
+
+    try {
+      const res = await axios.get(`${API}/notifications`, { headers: headers() });
+      const nb  = res.data.nb_demandes || 0;
+
+      if (!isFirstRef.current && nb > prevNbRef.current) {
+        playSound();
+      }
+
+      isFirstRef.current = false;
+      prevNbRef.current  = nb;
+      setNbDemandes(nb);
+    } catch (e) {
+      console.error(e);
     }
-    isFirstRef.current = false;
-    prevNbRef.current  = nb;
-    setNbDemandes(nb);
-    // ✅ Pas de setLoading → pas de refresh visible
-  } catch (e) { console.error(e); }
-};
+  };
+
+  const fetchCommandesCount = async () => {
+    if (!estApprouve) return;
+
+    try {
+      const res = await axios.get(`${API}/commandes/count`, { headers: headers() });
+      setNbCommandes(res.data.count || 0);
+    } catch (e) {
+      console.error(e);
+      setNbCommandes(0);
+    }
+  };
 
   useEffect(() => {
     if (pharmacie) {
@@ -66,29 +83,46 @@ export default function SidebarPharmacie({ estApprouve, pharmacie }) {
 
   useEffect(() => {
     isFirstRef.current = true;
+
     fetchNotifs();
-    const interval = setInterval(fetchNotifs, 5000);
+    fetchCommandesCount();
+
+    const interval = setInterval(() => {
+      fetchNotifs();
+      fetchCommandesCount();
+    }, 5000);
+
     return () => clearInterval(interval);
   }, [estApprouve]);
 
   const handleToggleOuvert = async () => {
     if (!estApprouve || toggling) return;
+
     setToggling(true);
+
     try {
       const res = await axios.put(`${API}/toggle-ouvert`, {}, { headers: headers() });
       setEstOuvert(res.data.est_ouverte);
-    } catch (e) { console.error(e); }
-    finally { setToggling(false); }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setToggling(false);
+    }
   };
 
   const handleToggleGarde = async () => {
     if (!estApprouve || toggling) return;
+
     setToggling(true);
+
     try {
       const res = await axios.put(`${API}/toggle-garde`, {}, { headers: headers() });
       setEstDeGarde(res.data.est_de_garde);
-    } catch (e) { console.error(e); }
-    finally { setToggling(false); }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setToggling(false);
+    }
   };
 
   const logout = () => {
@@ -96,10 +130,14 @@ export default function SidebarPharmacie({ estApprouve, pharmacie }) {
     navigate('/login');
   };
 
+  const badgeValue = (label) => {
+    if (label === 'Demandes') return nbDemandes;
+    if (label === 'Commandes') return nbCommandes;
+    return 0;
+  };
+
   return (
     <aside style={s.sidebar}>
-
-      {/* LOGO */}
       <div style={s.logoWrap}>
         <img src={logo} alt="Dwak Hna" style={s.logo} />
         <div>
@@ -108,13 +146,11 @@ export default function SidebarPharmacie({ estApprouve, pharmacie }) {
         </div>
       </div>
 
-      {/* TOGGLES OUVERT / GARDE */}
       <div style={{
         ...s.togglesWrap,
         opacity:       estApprouve ? 1 : 0.4,
         pointerEvents: estApprouve ? 'auto' : 'none',
       }}>
-        {/* Ouvert / Fermé */}
         <button onClick={handleToggleOuvert} disabled={toggling} style={{
           ...s.toggleBtn,
           background:  estOuvert ? '#dcfce7' : '#fee2e2',
@@ -129,7 +165,6 @@ export default function SidebarPharmacie({ estApprouve, pharmacie }) {
           </div>
         </button>
 
-        {/* De garde */}
         <button onClick={handleToggleGarde} disabled={toggling} style={{
           ...s.toggleBtn,
           background:  estDeGarde ? '#fef3c7' : '#f8fafc',
@@ -145,7 +180,6 @@ export default function SidebarPharmacie({ estApprouve, pharmacie }) {
         </button>
       </div>
 
-      {/* MENU */}
       <nav style={s.nav}>
         {menuItems.map(item => {
           if (!estApprouve) {
@@ -157,6 +191,9 @@ export default function SidebarPharmacie({ estApprouve, pharmacie }) {
               </div>
             );
           }
+
+          const count = badgeValue(item.label);
+
           return (
             <NavLink key={item.path} to={item.path}
               style={({ isActive }) => ({
@@ -165,15 +202,15 @@ export default function SidebarPharmacie({ estApprouve, pharmacie }) {
               })}>
               <span style={s.icon}>{item.icon}</span>
               <span style={s.label}>{item.label}</span>
-              {item.badge && nbDemandes > 0 && (
-                <span style={s.badge}>{nbDemandes}</span>
+
+              {item.badge && count > 0 && (
+                <span style={s.badge}>{count}</span>
               )}
             </NavLink>
           );
         })}
       </nav>
 
-      {/* LOGOUT */}
       <button onClick={logout} style={s.logoutBtn}>
         🚪 Déconnexion
       </button>

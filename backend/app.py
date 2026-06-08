@@ -3511,7 +3511,36 @@ def admin_get_commande_detail(commande_id):
     except Exception as e:
         print('ADMIN GET COMMANDE DETAIL ERROR:', e)
         return jsonify({'message': str(e)}), 500
+    
+@app.route('/api/pharmacie/commandes/count', methods=['GET'])
+def count_commandes_pharmacie():
+    try:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        data = jwt.decode(token, os.getenv('SECRET_KEY'), algorithms=['HS256'])
+        pharmacie_id = data['id']
 
+        cur = mysql.connection.cursor()
+        cur.execute("""
+            SELECT COUNT(*)
+            FROM commandes
+            WHERE pharmacie_id = %s
+            AND statut = 'en_attente'
+        """, (pharmacie_id,))
+
+        count = cur.fetchone()[0]
+        cur.close()
+
+        return jsonify({
+            'success': True,
+            'count': count
+        })
+
+    except Exception as e:
+        print("COUNT COMMANDES PHARMACIE ERROR:", e)
+        return jsonify({
+            'success': False,
+            'count': 0
+        }), 500
 # ============================================================
 # RUN
 # ============================================================
